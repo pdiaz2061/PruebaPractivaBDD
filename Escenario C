@@ -1,0 +1,78 @@
+🅲 Escenario C – PostgreSQL 14 (Replicación Síncrona en Ubuntu)
+🧰 Requisitos previos
+2 VMs Ubuntu (por ejemplo, ubuntu-postgres-master y ubuntu-postgres-standby)
+Red privada habilitada (por ejemplo 10.128.0.0/20)
+Puerto abierto: 5432 TCP
+PostgreSQL 14 instalado en ambas VMs
+
+🔧 PASO A PASO
+1️⃣ Instalar PostgreSQL 14 en ambas VMs
+sudo apt update
+sudo apt install postgresql postgresql-contrib -y
+Verifica:
+psql --version
+
+2️⃣ Configurar el servidor MASTER
+Edita postgresql.conf:
+sudo nano /etc/postgresql/14/main/postgresql.conf
+Modifica o descomenta:
+listen_addresses = '*'               # Escucha en todas las interfaces
+wal_level = replica
+synchronous_commit = on
+max_wal_senders = 5
+wal_keep_size = 64
+synchronous_standby_names = 'standby1'
+Edita pg_hba.conf:
+sudo nano /etc/postgresql/14/main/pg_hba.conf
+Agrega al final:
+# Permitir replicación desde la IP de la réplica
+host    replication     replicator      34.66.232.229       md5
+Crear usuario de replicación:
+sudo -u postgres psql
+CREATE USER replicator REPLICATION LOGIN ENCRYPTED PASSWORD 'replica123';
+Reinicia el servicio:
+sudo systemctl restart postgresql
+3️⃣ Preparar backup con pg_basebackup desde la STANDBY
+
+En la STANDBY VM, primero detén PostgreSQL:
+sudo systemctl stop postgresql
+Elimina datos actuales:
+sudo rm -rf /var/lib/postgresql/14/main/*
+Luego ejecuta el backup desde el master:
+sudo -u postgres pg_basebackup -h 35.226.221.71 -D /var/lib/postgresql/14/main -U replicator -Fp -Xs -P -R
+Te pedirá la contraseña del usuario replicator (replica123).
+Esto creará automáticamente el archivo standby.signal en PostgreSQL 13+ y una conexión automática para el archivo postgresql.auto.conf.
+4️⃣ Renombra el standby (opcional pero recomendado)
+
+Edita postgresql.conf en standby:
+sudo nano /etc/postgresql/14/main/postgresql.conf
+Asegúrate de incluir (o agregar al final):
+primary_conninfo = 'host=10.128.0.1 port=5432 user=replicator password=replica123 application_name=standby1'
+
+5️⃣ Iniciar el servidor STANDBY
+sudo systemctl start postgresql
+✅ Verificar replicación síncrona
+Desde el MASTER, corre:
+sudo -u postgres psql
+SELECT * FROM pg_stat_replication;
+Deberías ver una fila con:
+application_name = standby1
+state = streaming
+sync_state = sync
+
+
+🧪 Prueba de replicación
+En el master:
+CREATE DATABASE test_replicacion;
+\c test_replicacion
+CREATE TABLE empleados(id INT PRIMARY KEY, nombre TEXT);
+INSERT INTO empleados VALUES (1, 'Carlos'), (2, 'Lucía');
+En la standby:
+sudo -u postgres psql -d test_replicacion -c "SELECT * FROM empleados;"
+✅ Deberías ver los mismos datos.
+💥 Simular fallo y promover standby
+Para probar failover:
+En master:
+sudo systemctl stop postgresql
+En standby:
+sudo -u postgres pg_ctlcluster 14 main promote
