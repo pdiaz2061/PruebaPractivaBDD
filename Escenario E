@@ -1,0 +1,51 @@
+🔄 OPCIÓN 1: MySQL (Cloud SQL o CE) → BigQuery (usando Datastream)
+📋 Requisitos
+Base de datos MySQL (Cloud SQL o Compute Engine
+Un bucket de Cloud Storage para staging
+Dataset destino en BigQuery
+Datastream API habilitada
+
+🔧 PASOS
+1️⃣ Configurar el origen MySQL
+En tu instancia MySQL (por ejemplo, en Compute Engine):
+Asegúrate de tener habilitado el binlog:
+# /etc/mysql/mysql.conf.d/mysqld.cnf
+server-id=100
+log_bin=mysql-bin
+binlog_format=ROW
+binlog_row_image=FULL
+
+
+Crea usuario para Datastream:
+CREATE USER 'datastream'@'%' IDENTIFIED BY 'tu_clave_segura';
+GRANT SELECT, RELOAD, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'datastream'@'%';
+
+Reinicia MySQL
+sudo systemctl restart mysql
+
+2️⃣ Crear el bucket de Cloud Storage
+gsutil mb -l us-central1 gs://replica-mysql-bq-staging/
+
+3️⃣ Crear el Dataset destino en BigQuery
+bq mk --dataset --location=us-central1 mydataset_mysqlreplica
+
+4️⃣ Crear el stream en Datastream
+Desde la consola:
+
+Ir a Datastream > Create stream
+Nombre: mysql-to-bq
+Origen: MySQL
+IP, puerto, usuario datastream, contraseña
+Destino: Cloud Storage
+Bucket: replica-mysql-bq-staging
+Objeto: esquema/tablas específicas o todo
+Activar el stream
+
+5️⃣ Vincular Cloud Storage → BigQuery
+Usa Dataflow o BigQuery External Table para importar:
+CREATE OR REPLACE EXTERNAL TABLE mydataset_mysqlreplica.empleados
+OPTIONS (
+  format = 'JSON',
+  uris = ['gs://replica-mysql-bq-staging/**']
+);
+
