@@ -1,0 +1,69 @@
+Crear las VMs en Google Cloud
+* Nombre: mysql-master y mysql-replica
+* SO: Debian 11 o Ubuntu 22.04 LTS
+* Red: Subred privada 10.128.0.0/20
+* Puertos de red permitidos: 3306 (MySQL)
+* Tipo de máquina: e2-medium o similar
+
+Instalación de MySQL en ambas VMs
+sudo apt update
+sudo apt install mysql-server -y
+sudo systemctl start mysql
+sudo systemctl enable mysql
+
+🛠️ 3. Configurar el MASTER
+Edita el archivo:
+sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
+Agrega o modifica:
+server-id = 1
+log_bin = /var/log/mysql/mysql-bin.log
+bind-address = 0.0.0.0
+Reinicia el servicio:
+sudo systemctl restart mysql
+Crear usuario replicador:
+sudo mysql -u root -p
+CREATE USER 'replicator'@'%' IDENTIFIED BY 'replica123';
+GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%';
+FLUSH PRIVILEGES;
+Verifica estado del binlog:
+SHOW MASTER STATUS;
+✅ Apunta el nombre del archivo y la posición, por ejemplo:
+File: mysql-bin.000001
+Position: 1234
+⚙️ 4. Configurar la REPLICA
+Edita el archivo:
+sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
+Modifica/agrega:
+server-id = 2
+relay-log = /var/log/mysql/mysql-relay-bin.log
+log_bin = /var/log/mysql/mysql-bin.log
+bind-address = 0.0.0.0
+Reinicia el servicio:
+sudo systemctl restart mysql
+Conéctate a MySQL:
+sudo mysql -u root -p
+Configura la replicación:
+CHANGE MASTER TO
+  MASTER_HOST='34.69.194.10',
+  MASTER_USER='replicator',
+  MASTER_PASSWORD='replica123',
+  MASTER_LOG_FILE='mysql-bin.000001',  -- (usa el valor del master)
+  MASTER_LOG_POS=868;                 -- (usa el valor del master)
+
+START SLAVE;
+🔍 5. Verifica el estado en la replica
+SHOW SLAVE STATUS\G
+Debe decir:
+Slave_IO_Running: Yes
+Slave_SQL_Running: Yes
+
+🧪 6. Prueba de replicación
+En el master:
+CREATE DATABASE test_replica;
+USE test_replica;
+CREATE TABLE ejemplo (id INT PRIMARY KEY, nombre VARCHAR(50));
+INSERT INTO ejemplo VALUES (1, 'Maria'), (2, 'Jose');
+En la replica, revisa:
+SHOW DATABASES;
+USE test_replica;
+SELECT * FROM ejemplo;
