@@ -1,1 +1,77 @@
+📋 Requisitos previos
+2 (o más) VMs con Windows Server 2019 o superior en Google Cloud
+SQL Server 2019 instalado (con Management Studio)
+Una base de datos de prueba creada (ej. DB_Replicacion)
+
+Configuración de red:
+Todas las VMs deben estar en la misma red VPC o poder comunicarse entre sí
+Abrir puerto TCP 1433 en el firewall (si hay restricción)
+
+1️⃣ Configurar el Distributor
+Abre SQL Server Management Studio (SSMS).
+Conéctate como sa o un usuario administrador.
+Ve a Replication > Local Publications.
+Clic derecho en Replication > Configure Distribution.
+Marca la casilla "Configure the server as its own Distributor".
+Asigna la ruta para los archivos de snapshot (C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\ReplData).
+Finaliza el asistente
+
+2️⃣ Crear una base de datos para replicar
+CREATE DATABASE DB_Replicacion;
+GO
+USE DB_Replicacion;
+CREATE TABLE Empleados (
+    ID INT PRIMARY KEY,
+    Nombre NVARCHAR(100),
+    Departamento NVARCHAR(100)
+);
+INSERT INTO Empleados VALUES (1, 'Carlos', 'TI'), (2, 'Lucía', 'RRHH');
+
+3️⃣ Configurar una Snapshot Replication
+
+En SSMS, expande Replication > Local Publications.
+Clic derecho > New Publication
+Selecciona DB_Replicacion
+Elige Snapshot Publication
+Selecciona la tabla Empleados
+Crea un nuevo Agente Snapshot
+Finaliza y crea la publicación (Pub_Snapshot)
+
+4️⃣ Crear un Subscriber para Snapshot
+En Replication > Local Subscriptions, clic derecho > New Subscription…
+Selecciona la publicación Pub_Snapshot
+Conéctate al Subscriber
+Selecciona el servidor destino y base de datos (puede ser la misma o una nueva)
+Método de suscripción: Push Subscription
+Acepta opciones por defecto, finaliza
+
+5️⃣ Verifica los datos replicados
+Conéctate al Subscriber y ejecuta:
+SELECT * FROM Empleados;
+
+🔁 PASO 6 – Configurar Transactional Replication
+En New Publication, selecciona Transactional Publication
+Selecciona tabla Empleados
+Asigna un nombre (ej: Pub_Transaccional)
+Finaliza el asistente
+Crear un Push Subscription como antes, elige la publicación Pub_Transaccional.
+
+🧪 Prueba
+En el Publisher:
+INSERT INTO Empleados VALUES (3, 'Ana', 'Finanzas');
+
+En el Subscriber:
+SELECT * FROM Empleados;
+
+🔄 PASO 7 – Configurar Merge Replication
+En New Publication, elige Merge Publication
+Selecciona DB_Replicacion y tabla Empleados
+Usa agente de Merge y finaliza
+
+🧪 Prueba bidireccional
+En Publisher:
+INSERT INTO Empleados VALUES (4, 'Diego', 'Logística');
+
+En Subscriber:
+INSERT INTO Empleados VALUES (5, 'Laura', 'Compras');
 
