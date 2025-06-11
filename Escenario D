@@ -1,0 +1,75 @@
+Requisitos previos
+3 instancias de Compute Engine con Ubuntu (pueden ser Ubuntu 20.04 LTS o 22.04 LTS)
+Conexión de red entre las instancias (misma VPC)
+Puertos 27017 (MongoDB) y 27019 (elecciones) abiertos en el firewall
+
+Paso 1: Instalar MongoDB en las tres instancias
+# Importar la clave GPG pública
+sudo apt-get install gnupg -y
+curl -fsSL https://www.mongodb.org/static/pgp/server-5.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-archive-keyring.gpg
+
+# Crear el archivo de lista para MongoDB
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-archive-keyring.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/5.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-5.0.list
+
+# Actualizar e instalar MongoDB
+sudo apt-get update
+sudo apt-get install -y mongodb-org
+
+# Iniciar el servicio MongoDB
+sudo systemctl start mongod
+sudo systemctl enable mongod
+
+Paso 2: Configurar el archivo mongod.conf en cada nodo
+sudo nano /etc/mongod.conf
+
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+
+replication:
+  replSetName: "rs0"
+
+Paso 3: Reiniciar el servicio MongoDB en cada nodo
+sudo systemctl restart mongod
+
+Paso 4: Inicializar el Replica Set
+Conéctate a la shell de MongoDB en el nodo que deseas que sea el primario inicial:
+
+mongosh
+rs.initiate({
+  _id: "rs0",
+  members: [
+    { _id: 0, host: "IP_NODO_1:27017" },
+    { _id: 1, host: "IP_NODO_2:27017" },
+    { _id: 2, host: "IP_NODO_3:27017" }
+  ]
+})
+
+rs.status()
+
+Paso 6: Insertar datos y verificar replicación
+// Conéctate al primario (si no estás ya en él)
+mongosh --host IP_NODO_PRIMARIO
+
+// Crear una base de datos y colección de prueba
+use prueba_replica
+db.datos.insertOne({ mensaje: "Este es un documento de prueba", fecha: new Date() })
+
+// Verificar los datos
+db.datos.find()
+
+mongosh --host IP_NODO_SECUNDARIO
+
+// Permitir lectura en secundario (por defecto no permiten lecturas)
+rs.secondaryOk()
+
+// Verificar los datos replicados
+use prueba_replica
+db.datos.find()
+
+Paso 7: Probar failover (cambio de primario)
+// En el primario actual
+rs.stepDown(60)  // Forzar que deje de ser primario por 60 segundos
+
+// Verificar nuevo primario
+rs.status()
